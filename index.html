@@ -7,63 +7,134 @@
   <meta name="robots" content="index, follow" />
   <meta name="google-site-verification" content="je81n_UtY27MEUx6Cy_o74rw-ibJmZRVluilmMSrD0k" />
   <link rel="icon" href="assets/img/classroom.png" type="image/png" />
-  <title>Classroom</title>
+  <title>Application Form</title>
   <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3/dist/fp.min.js"></script>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f5f5f5;
+      color: #222;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    form {
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      width: 350px;
+    }
+    input, textarea, button {
+      width: 100%;
+      margin: 10px 0;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    button:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+    button:hover:not(:disabled) {
+      background: #0056b3;
+    }
+    .checkbox {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+  </style>
 </head>
 <body>
- 
 
-<script>
+  <form id="appForm">
+    <h2>Application Form</h2>
+    <p>You will be emailed with further details if you are accepted.</p>
+    <input type="text" id="name" placeholder="Your Name" required />
+    <input type="email" id="email" placeholder="Your Email" required />
+    <textarea id="message" placeholder="Why are you applying?" required></textarea>
 
-    setTimeout(() => {
-  const survey = document.getElementById("survey-popup");
-  survey.classList.add("show");   // slide popup up
-}, 4000);
+    <label class="checkbox">
+      <input type="checkbox" id="consent" required />
+      I agree to the terms of service available on the homepage
+    </label>
 
-document.getElementById("survey-close").onclick = () => {
-  const survey = document.getElementById("survey-popup");
-  survey.classList.remove("show"); // slide it back down
-};
+    <button type="submit" id="submitBtn">Submit</button>
+    <p id="status"></p>
+  </form>
 
-    
-    
-  (async () => {
+  <script>
+    const form = document.getElementById('appForm');
+    const statusEl = document.getElementById('status');
+    const submitBtn = document.getElementById('submitBtn');
+    const webhookWorker = "https://apply.ethantytang11.workers.dev/"; 
+    const cooldownKey = "appCooldown";
+    const cooldownMs = 3 * 24 * 60 * 60 * 1000; // 3 days
 
-      const fp = await FingerprintJS.load();
-      const result = await fp.get();
-      const visitorId = result.visitorId;
-      localStorage.setItem("visits", visits);
+    const lastSubmit = localStorage.getItem(cooldownKey);
+    if (lastSubmit && Date.now() - lastSubmit < cooldownMs) {
+      const timeLeft = Math.ceil((cooldownMs - (Date.now() - lastSubmit)) / (1000 * 60 * 60));
+      statusEl.textContent = `⏳ Try again in about ${timeLeft} hours.`;
+      submitBtn.disabled = true;
+    }
 
-      // IP info
-      fetch("https://ipinfo.io/json?token=d3c139f7603b13")
-          .then(res => res.json())
-          .then(data => {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
 
-              const message = `
-📡 New visitor on your site!
-🆔 FingerprintJS ID: ${visitorId}
-🧠 IP: ${data.ip}
-🌍 Location: ${data.city}, ${data.region}, ${data.country}
-📍 Coords: ${data.loc}
-🕹 ISP: ${data.org}
-💻 User Agent: ${navigator.userAgent}
-📅 Time: ${new Date().toLocaleString()}
-              `;
+      const consentGiven = document.getElementById('consent').checked;
+      if (!consentGiven) {
+        statusEl.textContent = "⚠️ You must consent before submitting.";
+        return;
+      }
 
-              fetch("https://logger.ethantytang11.workers.dev/", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ message: message })
-              })
-              .then(res => res.text())
-              .then(console.log)
-              .catch(console.error);
-          })
-          .catch(err => console.error("⚠️ IP fetch error:", err));
-  })();
+      submitBtn.disabled = true;
+      statusEl.textContent = "Submitting...";
+
+      try {
+        // FingerprintJS
+        const fp = await FingerprintJS.load();
+        const result = await fp.get();
+        const visitorId = result.visitorId;
+
+        // IP info
+        const ipData = await fetch("https://ipinfo.io/json?token=d3c139f7603b13").then(r => r.json());
+
+        const payload = {
+          name: document.getElementById("name").value,
+          email: document.getElementById("email").value,
+          message: document.getElementById("message").value,
+          fingerprint: visitorId,
+          ip: ipData.ip,
+          location: `${ipData.city}, ${ipData.region}, ${ipData.country}`,
+          org: ipData.org,
+          time: new Date().toLocaleString(),
+          userAgent: navigator.userAgent
+        };
+
+        await fetch(webhookWorker, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        localStorage.setItem(cooldownKey, Date.now());
+        statusEl.textContent = "✅ Application submitted successfully!";
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = "❌ Error submitting form. Try again later.";
+        submitBtn.disabled = false;
+      }
+    });
   </script>
-
-
 
 </body>
 </html>
